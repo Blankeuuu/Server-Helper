@@ -32,7 +32,9 @@ LANGS = {
         "CONFIRM_UPDATE": "Check for update?",
         "YES": "Y=K1",
         "NO": "N=K2",
-        "VERSION": "Ver"
+        "VERSION": "Ver",
+        "UPDATING": "Updating...",
+        "PROGRESS": "Progress"
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -55,7 +57,9 @@ LANGS = {
         "CONFIRM_UPDATE": "Wyszukac aktualizacje?",
         "YES": "T=K1",
         "NO": "N=K2",
-        "VERSION": "Wersja"
+        "VERSION": "Wersja",
+        "UPDATING": "Aktualizacja...",
+        "PROGRESS": "Postep"
     }
 }
 
@@ -72,6 +76,7 @@ settings_state = {
 settings_index = 0
 in_settings = False
 in_update_confirm = False
+in_update_progress = False
 
 SSID = conf.SSID
 PASSWORD = conf.PASSWORD
@@ -464,7 +469,6 @@ def display_settings_panel():
         label = T(s["label"])
         val = settings_state[key]
         oled.text(f"{prefix}{label}: {val}", 0, y, 1)
-    # Dodaj opcję aktualizacji jako ostatnią
     y = 20 + 12 * len(settings)
     prefix = ">" if settings_index == len(settings) else " "
     oled.text(f"{prefix}{T('UPDATE')}", 0, y, 1)
@@ -478,6 +482,16 @@ def display_update_confirm():
     oled.text(T("CONFIRM_UPDATE"), 0, 24, 1)
     oled.text(T("YES"), 0, 44, 1)
     oled.text(T("NO"), 64, 44, 1)
+    oled.show()
+
+def display_update_progress(progress=0):
+    oled.fill(0)
+    oled.text(T("UPDATING"), 0, 0, 1)
+    oled.hline(0, 12, 128, 1)
+    oled.text(f"{T('PROGRESS')}: {progress}%", 0, 32, 1)
+    bar_width = int(progress * 1.28)
+    oled.rect(0, 48, 128, 8, 1)
+    oled.fill_rect(0, 48, bar_width, 8, 1)
     oled.show()
 
 def check_alert_triggers(data, disk_data):
@@ -500,11 +514,22 @@ def check_alert_triggers(data, disk_data):
     except:
         pass
 
+def do_update_with_progress():
+    display_update_progress(10)
+    time.sleep(0.5)
+    display_update_progress(40)
+    time.sleep(0.5)
+    display_update_progress(70)
+    time.sleep(0.5)
+    display_update_progress(100)
+    time.sleep(0.5)
+    ugit.update_main()
+
 def main():
     global brightness, slider_visible, slider_show_time, current_page, selected_disk_index
     global alert_active, alert_message, alert_start_time, server_name
     global in_settings, settings_index, settings_state, REFRESH_INTERVAL
-    global in_update_confirm
+    global in_update_confirm, in_update_progress
 
     try:
         connect_wifi()
@@ -531,13 +556,24 @@ def main():
             # --- PANEL USTAWIEŃ ---
             if in_settings:
                 num_options = len(settings) + 1
+                if in_update_progress:
+                    # Pokazuj progres aktualizacji
+                    # (do_update_with_progress wywoła ugit.update_main())
+                    do_update_with_progress()
+                    in_update_progress = False
+                    in_settings = False
+                    time.sleep(0.05)
+                    continue
+
                 if in_update_confirm:
                     display_update_confirm()
                     if time.ticks_diff(now, last_press_time) > debounce_delay:
-                        if not button_k1.value() or not button_k2.value():
-                            ugit.update_main()
+                        if not button_k1.value():
                             in_update_confirm = False
-                            in_settings = False
+                            in_update_progress = True
+                            last_press_time = now
+                        elif not button_k2.value():
+                            in_update_confirm = False
                             last_press_time = now
                     time.sleep(0.05)
                     continue
@@ -569,7 +605,7 @@ def main():
                                     REFRESH_INTERVAL = settings_state[key]
                             last_press_time = now
                     else:
-                        # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują potwierdzenie
+                        # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują ekran potwierdzenia
                         if not button_k1.value() or not button_k2.value():
                             in_update_confirm = True
                             last_press_time = now
