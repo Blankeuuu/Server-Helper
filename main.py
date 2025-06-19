@@ -376,7 +376,7 @@ def display_stats(data):
     name_disp = ascii_polish(server_name)
     x_name = (128 - len(name_disp)*8)//2
     oled.text(name_disp, x_name, 0, 1)
-    oled.hline(0, 10极 128, 1)
+    oled.hline(0, 10, 128, 1)
     try:
         cpu = float(data['cpu'])
     except:
