@@ -1,0 +1,10 @@
+SSID = 'Wifi Name'
+PASSWORD = 'Wifi Password'
+SERVER_URL = 'http://(your server ip):61208'
+
+CPU_URL = SERVER_URL + '/api/4/cpu'
+MEM_URL = SERVER_URL + '/api/4/mem'
+SENSORS_URL = SERVER_URL + '/api/4/sensors'
+DISK_URL = SERVER_URL + '/api/4/fs'
+NETWORK_URL = SERVER_URL + '/api/4/network'
+SYSTEM_URL = SERVER_URL + '/api/4/system'
