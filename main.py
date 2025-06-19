@@ -8,7 +8,7 @@ import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.2.3"
+MAIN_VERSION = "1.2.5"
 
 LANGS = {
     "ENG": {
@@ -90,6 +90,7 @@ screen_off = False
 last_activity_time = time.ticks_ms()
 SLEEP_DURATION = 15 * 1000
 settings_scroll_offset = 0
+sleep_wake_ignore = False  # <--- nowa flaga ignorowania pierwszego kliknięcia po wybudzeniu
 
 SSID = conf.SSID
 PASSWORD = conf.PASSWORD
@@ -487,8 +488,11 @@ def scroll_version_text(version, y, selected, now):
 def display_settings_panel(now=0):
     oled.fill(0)
     global settings, settings_index, settings_state, settings_scroll_offset
-    oled.text(T("SETTINGS"), 16, 0, 1)
+    # Nagłówek z ikoną i separator
+    oled.rect(0, 0, 128, 12, 1)
+    oled.text(T("SETTINGS"), 33, 2, 1)
     oled.hline(0, 12, 128, 1)
+
     visible_lines = 3
     if settings_index < settings_scroll_offset:
         settings_scroll_offset = settings_index
@@ -496,40 +500,59 @@ def display_settings_panel(now=0):
         settings_scroll_offset = settings_index - visible_lines + 1
     visible_settings = settings[settings_scroll_offset:settings_scroll_offset+visible_lines]
     visible_idx = 0
+    total_items = len(settings)
     for i, s in enumerate(visible_settings):
-        y = 20 + 12 * visible_idx
+        y = 18 + 14 * visible_idx
         idx = settings_scroll_offset + i
+        # Upiększenie: ramka wokół wybranej opcji, separator pod nagłówkiem, kropki na scrollbarze
         if s.get("header"):
-            oled.text(T(s["label"]), 0, y, 1)
+            oled.text("- " + T(s["label"]) + " -", 10, y, 1)
+            oled.hline(0, y+10, 128, 1)
         elif s.get("update"):
+            if idx == settings_index:
+                oled.rect(0, y-2, 128, 14, 1)
+                oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
-            oled.text(f"{prefix}{T('UPDATE')}", 0, y, 1)
+            oled.text(f"{prefix}{T('UPDATE')}", 4, y, 1)
             version_disp = scroll_version_text(MAIN_VERSION, y, idx==settings_index, time.ticks_ms())
             oled.text(f"{T('VERSION')}: {version_disp}", 64, y, 1)
         else:
+            if idx == settings_index:
+                oled.rect(0, y-2, 128, 14, 1)
+                oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
             val = settings_state[s["key"]]
-            oled.text(f"{prefix}{T(s['label'])}: {val}", 0, y, 1)
+            oled.text(f"{prefix}{T(s['label'])}: {val}", 4, y, 1)
         visible_idx += 1
+    # "Scroll bar" po prawej
+    bar_height = 38
+    bar_top = 16
+    if total_items > visible_lines:
+        bar_len = int(bar_height * visible_lines / total_items)
+        bar_pos = int(bar_height * settings_scroll_offset / total_items)
+        oled.fill_rect(124, bar_top + bar_pos, 2, bar_len, 1)
+        oled.rect(124, bar_top, 2, bar_height, 1)
     oled.show()
 
 def display_update_confirm():
     oled.fill(0)
-    oled.text(T("UPDATE"), 0, 0, 1)
-    oled.hline(0, 12, 128, 1)
-    oled.text(T("CONFIRM_UPDATE"), 0, 24, 1)
-    oled.text(T("YES"), 0, 44, 1)
-    oled.text(T("NO"), 64, 44, 1)
+    oled.rect(0, 0, 128, 64, 1)
+    oled.text(T("UPDATE"), 4, 8, 1)
+    oled.hline(0, 18, 128, 1)
+    oled.text(T("CONFIRM_UPDATE"), 4, 28, 1)
+    oled.text(T("YES"), 4, 48, 1)
+    oled.text(T("NO"), 64, 48, 1)
     oled.show()
 
 def display_update_progress(progress=0):
     oled.fill(0)
-    oled.text(T("UPDATING"), 0, 0, 1)
-    oled.hline(0, 12, 128, 1)
-    oled.text(f"{T('PROGRESS')}: {progress}%", 0, 32, 1)
-    bar_width = int(progress * 1.28)
-    oled.rect(0, 48, 128, 8, 1)
-    oled.fill_rect(0, 48, bar_width, 8, 1)
+    oled.rect(0, 0, 128, 64, 1)
+    oled.text(T("UPDATING"), 4, 8, 1)
+    oled.hline(0, 18, 128, 1)
+    oled.text(f"{T('PROGRESS')}: {progress}%", 4, 32, 1)
+    bar_width = int(progress * 1.2)
+    oled.rect(4, 48, 120, 8, 1)
+    oled.fill_rect(4, 48, bar_width, 8, 1)
     oled.show()
 
 def do_update_with_progress():
@@ -571,9 +594,11 @@ def is_sleep_time():
         return False
 
 def handle_sleep_mode():
-    global screen_off, last_activity_time
+    global screen_off, last_activity_time, sleep_wake_ignore
     if is_sleep_time():
         if not button_k1.value() or not button_k2.value() or not button_k3.value() or not button_k4.value():
+            if screen_off:
+                sleep_wake_ignore = True  # Po wybudzeniu ignoruj pierwsze kliknięcie!
             screen_off = False
             last_activity_time = time.ticks_ms()
             oled.poweron()
@@ -586,11 +611,14 @@ def handle_sleep_mode():
         oled.poweron()
         oled.contrast(brightness)
 
+def any_button_pressed():
+    return (not button_k1.value() or not button_k2.value() or
+            not button_k3.value() or not button_k4.value())
+
 def main():
     global settings_index, in_settings, in_update_confirm, in_update_progress, settings_scroll_offset
     global brightness, slider_visible, slider_show_time, current_page, selected_disk_index
-    global alert_active, alert_message, alert_start_time, server_name
-    global settings_state
+    global alert_active, alert_message, alert_start_time, server_name, sleep_wake_ignore
 
     try:
         connect_wifi()
@@ -608,6 +636,13 @@ def main():
             handle_sleep_mode()
             if screen_off:
                 time.sleep(0.1)
+                continue
+            # Po wybudzeniu ignoruj pierwsze kliknięcie dowolnego przycisku
+            if sleep_wake_ignore:
+                if any_button_pressed():
+                    while any_button_pressed():
+                        time.sleep(0.01)
+                    sleep_wake_ignore = False
                 continue
             if alert_active:
                 show_alert(alert_message, now)
@@ -752,4 +787,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
