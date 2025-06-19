@@ -2,13 +2,13 @@ import network
 import time
 import urequests
 import gc
-from machine import Pin, I2C, reset
+from machine import Pin, I2C, reset, RTC
 import ssd1306
 import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.0.1"
+MAIN_VERSION = "1.2.0"
 
 LANGS = {
     "ENG": {
@@ -33,8 +33,9 @@ LANGS = {
         "YES": "Y=K1",
         "NO": "N=K2",
         "VERSION": "Ver",
-        "UPDATING": "Updating...",
-        "PROGRESS": "Progress"
+        "SLEEP_START": "Sleep Start",
+        "SLEEP_END": "Sleep End",
+        "SLEEP_MODE": "Sleep Mode"
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -58,25 +59,37 @@ LANGS = {
         "YES": "T=K1",
         "NO": "N=K2",
         "VERSION": "Wersja",
-        "UPDATING": "Aktualizacja...",
-        "PROGRESS": "Postep"
+        "SLEEP_START": "Sen Start",
+        "SLEEP_END": "Sen Koniec",
+        "SLEEP_MODE": "Tryb Snu"
     }
 }
 
+# Zwiększona lista ustawień
 settings = [
     {"label": "LANG", "key": "lang", "options": ["ENG", "PL"], "index": 0},
     {"label": "UNIT", "key": "unit", "options": ["B", "KB", "MB", "GB"], "index": 3},
-    {"label": "REFRESH", "key": "refresh", "min": 1, "max": 60, "step": 1}
+    {"label": "REFRESH", "key": "refresh", "min": 1, "max": 60, "step": 1},
+    {"label": "SLEEP_START", "key": "sleep_start", "min": 0, "max": 23, "step": 1},
+    {"label": "SLEEP_END", "key": "sleep_end", "min": 0, "max": 23, "step": 1}
 ]
+
+# Stan ustawień z domyślnymi wartościami
 settings_state = {
     "lang": "ENG",
     "unit": "GB",
-    "refresh": 5
+    "refresh": 5,
+    "sleep_start": 22,  # 22:00
+    "sleep_end": 6      # 06:00
 }
+
 settings_index = 0
 in_settings = False
 in_update_confirm = False
-in_update_progress = False
+screen_off = False
+last_activity_time = time.ticks_ms()
+SLEEP_DURATION = 15 * 1000  # 15 sekund aktywności po przebudzeniu
+settings_scroll_offset = 0  # Przesunięcie dla przewijania ustawień
 
 SSID = conf.SSID
 PASSWORD = conf.PASSWORD
@@ -352,7 +365,7 @@ def draw_wifi_icon(x, y, connected=True):
         if dy > 0:
             oled.pixel(x+8+dx, y+5+4-dy, 1)
     for dx in range(-4, 5):
-        dy = int((1 - (abs(dx)/4))**0.5 * 2) if abs(dx) <= 4 else 0
+        dy = int((1 - (abs(dx)/4))**0.5 * 2) if abs(dx) <= 4 else 极
         if dy > 0:
             oled.pixel(x+8+dx, y+9+2-dy, 1)
     oled.fill_rect(x+8-2, y+13, 5, 3, 1)
@@ -363,7 +376,7 @@ def display_stats(data):
     name_disp = ascii_polish(server_name)
     x_name = (128 - len(name_disp)*8)//2
     oled.text(name_disp, x_name, 0, 1)
-    oled.hline(0, 10, 128, 1)
+    oled.hline(0, 10极 128, 1)
     try:
         cpu = float(data['cpu'])
     except:
@@ -459,17 +472,30 @@ def display_net_data(data):
 
 def display_settings_panel():
     oled.fill(0)
-    global settings, settings_index, settings_state
+    global settings, settings_index, settings_state, settings_scroll_offset
     oled.text(T("SETTINGS"), 16, 0, 1)
     oled.hline(0, 12, 128, 1)
-    for i, s in enumerate(settings):
+    
+    # Automatyczne przewijanie
+    if settings_index < settings_scroll_offset:
+        settings_scroll_offset = settings_index
+    elif settings_index >= settings_scroll_offset + 3:
+        settings_scroll_offset = settings_index - 2
+    
+    # Wyświetlanie tylko widocznych ustawień
+    visible_settings = settings[settings_scroll_offset:settings_scroll_offset+3]
+    
+    for i, s in enumerate(visible_settings):
         y = 20 + 12 * i
-        prefix = ">" if i == settings_index else " "
+        idx = settings_scroll_offset + i
+        prefix = ">" if idx == settings_index else " "
         key = s["key"]
         label = T(s["label"])
         val = settings_state[key]
         oled.text(f"{prefix}{label}: {val}", 0, y, 1)
-    y = 20 + 12 * len(settings)
+    
+    # Dodaj opcję aktualizacji jako ostatnią
+    y = 20 + 12 * len(visible_settings)
     prefix = ">" if settings_index == len(settings) else " "
     oled.text(f"{prefix}{T('UPDATE')}", 0, y, 1)
     oled.text(f"{T('VERSION')}: {MAIN_VERSION}", 64, y, 1)
@@ -482,16 +508,6 @@ def display_update_confirm():
     oled.text(T("CONFIRM_UPDATE"), 0, 24, 1)
     oled.text(T("YES"), 0, 44, 1)
     oled.text(T("NO"), 64, 44, 1)
-    oled.show()
-
-def display_update_progress(progress=0):
-    oled.fill(0)
-    oled.text(T("UPDATING"), 0, 0, 1)
-    oled.hline(0, 12, 128, 1)
-    oled.text(f"{T('PROGRESS')}: {progress}%", 0, 32, 1)
-    bar_width = int(progress * 1.28)
-    oled.rect(0, 48, 128, 8, 1)
-    oled.fill_rect(0, 48, bar_width, 8, 1)
     oled.show()
 
 def check_alert_triggers(data, disk_data):
@@ -514,22 +530,45 @@ def check_alert_triggers(data, disk_data):
     except:
         pass
 
-def do_update_with_progress():
-    display_update_progress(10)
-    time.sleep(0.5)
-    display_update_progress(40)
-    time.sleep(0.5)
-    display_update_progress(70)
-    time.sleep(0.5)
-    display_update_progress(100)
-    time.sleep(0.5)
-    ugit.update_main()
+def is_sleep_time():
+    try:
+        # Pobierz aktualną godzinę (uproszczone - w rzeczywistości potrzebujesz RTC)
+        _, _, _, hour, _, _, _, _ = time.localtime()
+        start = settings_state["sleep_start"]
+        end = settings_state["sleep_end"]
+        
+        if start < end:
+            return start <= hour < end
+        else:
+            return hour >= start or hour < end
+    except:
+        return False
+
+def handle_sleep_mode():
+    global screen_off, last_activity_time
+    
+    if is_sleep_time():
+        # Sprawdź czy użytkownik nacisnął przycisk
+        if not button_k1.value() or not button_k2.value() or not button_k3.value() or not button_k4.value():
+            screen_off = False
+            last_activity_time = time.ticks_ms()
+            oled.poweron()
+            oled.contrast(brightness)
+        
+        # Sprawdź czy minęło 15 sekund od ostatniej aktywności
+        if time.ticks_diff(time.ticks_ms(), last_activity_time) > SLEEP_DURATION:
+            screen_off = True
+            oled.poweroff()
+    else:
+        screen_off = False
+        oled.poweron()
+        oled.contrast(brightness)
 
 def main():
     global brightness, slider_visible, slider_show_time, current_page, selected_disk_index
     global alert_active, alert_message, alert_start_time, server_name
     global in_settings, settings_index, settings_state, REFRESH_INTERVAL
-    global in_update_confirm, in_update_progress
+    global in_update_confirm, settings_scroll_offset, screen_off, last_activity_time
 
     try:
         connect_wifi()
@@ -544,6 +583,13 @@ def main():
 
         while True:
             now = time.ticks_ms()
+            
+            # Sprawdź tryb snu
+            handle_sleep_mode()
+            
+            if screen_off:
+                time.sleep(0.1)
+                continue
 
             if alert_active:
                 show_alert(alert_message, now)
@@ -556,24 +602,13 @@ def main():
             # --- PANEL USTAWIEŃ ---
             if in_settings:
                 num_options = len(settings) + 1
-                if in_update_progress:
-                    # Pokazuj progres aktualizacji
-                    # (do_update_with_progress wywoła ugit.update_main())
-                    do_update_with_progress()
-                    in_update_progress = False
-                    in_settings = False
-                    time.sleep(0.05)
-                    continue
-
                 if in_update_confirm:
                     display_update_confirm()
                     if time.ticks_diff(now, last_press_time) > debounce_delay:
-                        if not button_k1.value():
+                        if not button_k1.value() or not button_k2.value():
+                            ugit.update_main()
                             in_update_confirm = False
-                            in_update_progress = True
-                            last_press_time = now
-                        elif not button_k2.value():
-                            in_update_confirm = False
+                            in_settings = False
                             last_press_time = now
                     time.sleep(0.05)
                     continue
@@ -603,9 +638,9 @@ def main():
                                 settings_state[key] = max(s["min"], settings_state[key] - s["step"])
                                 if key == "refresh":
                                     REFRESH_INTERVAL = settings_state[key]
-                            last_press_time = now
+                            last_press极 now
                     else:
-                        # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują ekran potwierdzenia
+                        # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują potwierdzenie
                         if not button_k1.value() or not button_k2.value():
                             in_update_confirm = True
                             last_press_time = now
@@ -615,6 +650,7 @@ def main():
                     elif not button_k4.value():
                         in_settings = False
                         settings_index = 0
+                        settings_scroll_offset = 0
                         last_press_time = now
 
                 display_settings_panel()
@@ -663,6 +699,7 @@ def main():
                     elif not button_k4.value():
                         in_settings = True
                         settings_index = 0
+                        settings_scroll_offset = 0
                         last_press_time = now
 
             if slider_visible and time.ticks_diff(now, slider_show_time) > 3000:
