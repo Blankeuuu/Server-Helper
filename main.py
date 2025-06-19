@@ -638,7 +638,7 @@ def main():
                                 settings_state[key] = max(s["min"], settings_state[key] - s["step"])
                                 if key == "refresh":
                                     REFRESH_INTERVAL = settings_state[key]
-                            last_press极 now
+                            last_press = now
                     else:
                         # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują potwierdzenie
                         if not button_k1.value() or not button_k2.value():
@@ -737,3 +737,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
