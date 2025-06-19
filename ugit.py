@@ -1,7 +1,7 @@
 import urequests
 import machine
 
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/TWOJ_LOGIN/TWOJE_REPO/main/main.py"  # <-- ZMIEŃ NA SWÓJ LINK
+GITHUB_RAW_URL = "https://github.com/Blankeuuu/Server-Helper/raw/refs/heads/main/main.py"
 
 def update_main():
     try:
