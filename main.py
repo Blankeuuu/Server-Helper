@@ -8,7 +8,7 @@ import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.0.0"
+MAIN_VERSION = "1.0.1"
 
 LANGS = {
     "ENG": {
@@ -98,7 +98,7 @@ current_page = 0
 
 filtered_disks = []
 selected_disk_index = 0
-server_name = "Serwer"
+server_name = "Server"
 
 alert_active = False
 alert_message = ""
@@ -112,6 +112,12 @@ def ascii_polish(text):
     pol = "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ"
     asc = "acelnoszzACELNOSZZ"
     return ''.join(asc[pol.index(c)] if c in pol else c for c in text)
+
+def trigger_alert(msg):
+    global alert_active, alert_message, alert_start_time
+    alert_active = True
+    alert_message = msg
+    alert_start_time = time.ticks_ms()
 
 def show_alert(msg, now):
     oled.fill(0)
@@ -141,12 +147,6 @@ def show_alert(msg, now):
             x = 1
         oled.text(l, x, y, 1)
     oled.show()
-
-def trigger_alert(msg):
-    global alert_active, alert_message, alert_start_time
-    alert_active = True
-    alert_message = msg
-    alert_start_time = time.ticks_ms()
 
 def check_alert_clear():
     global alert_active
@@ -183,7 +183,7 @@ def fetch_server_name():
             server_name = "Serwer"
     except Exception as e:
         print("Nie mogę pobrać nazwy serwera:", e)
-        server_name = "Serwer"
+        server_name = "Server"
 
 def fetch_data():
     data = {}
@@ -530,48 +530,50 @@ def main():
 
             # --- PANEL USTAWIEŃ ---
             if in_settings:
+                num_options = len(settings) + 1
                 if in_update_confirm:
                     display_update_confirm()
                     if time.ticks_diff(now, last_press_time) > debounce_delay:
-                        if not button_k1.value():
+                        if not button_k1.value() or not button_k2.value():
                             ugit.update_main()
                             in_update_confirm = False
                             in_settings = False
-                            last_press_time = now
-                        elif not button_k2.value():
-                            in_update_confirm = False
                             last_press_time = now
                     time.sleep(0.05)
                     continue
 
                 if time.ticks_diff(now, last_press_time) > debounce_delay:
-                    num_options = len(settings) + 1
-                    if not button_k1.value():
-                        s = settings[settings_index] if settings_index < len(settings) else None
-                        if s and "options" in s:
-                            current_idx = s["options"].index(settings_state[s["key"]])
-                            new_idx = (current_idx + 1) % len(s["options"])
-                            settings_state[s["key"]] = s["options"][new_idx]
-                        elif s:
-                            settings_state[s["key"]] = min(s["max"], settings_state[s["key"]] + s["step"])
-                            if s["key"] == "refresh":
-                                REFRESH_INTERVAL = settings_state[s["key"]]
-                        last_press_time = now
-                    elif not button_k2.value():
-                        s = settings[settings_index] if settings_index < len(settings) else None
-                        if s and "options" in s:
-                            current_idx = s["options"].index(settings_state[s["key"]])
-                            new_idx = (current_idx - 1) % len(s["options"])
-                            settings_state[s["key"]] = s["options"][new_idx]
-                        elif s:
-                            settings_state[s["key"]] = max(s["min"], settings_state[s["key"]] - s["step"])
-                            if s["key"] == "refresh":
-                                REFRESH_INTERVAL = settings_state[s["key"]]
-                        last_press_time = now
-                    elif not button_k3.value():
-                        # Jeśli wybrano opcję aktualizacji
-                        if settings_index == len(settings):
+                    if settings_index < len(settings):
+                        if not button_k1.value():
+                            s = settings[settings_index]
+                            key = s["key"]
+                            if "options" in s:
+                                current_idx = s["options"].index(settings_state[key])
+                                new_idx = (current_idx + 1) % len(s["options"])
+                                settings_state[key] = s["options"][new_idx]
+                            else:
+                                settings_state[key] = min(s["max"], settings_state[key] + s["step"])
+                                if key == "refresh":
+                                    REFRESH_INTERVAL = settings_state[key]
+                            last_press_time = now
+                        elif not button_k2.value():
+                            s = settings[settings_index]
+                            key = s["key"]
+                            if "options" in s:
+                                current_idx = s["options"].index(settings_state[key])
+                                new_idx = (current_idx - 1) % len(s["options"])
+                                settings_state[key] = s["options"][new_idx]
+                            else:
+                                settings_state[key] = max(s["min"], settings_state[key] - s["step"])
+                                if key == "refresh":
+                                    REFRESH_INTERVAL = settings_state[key]
+                            last_press_time = now
+                    else:
+                        # Jeśli jesteśmy na opcji "Update", zarówno K1 jak i K2 wywołują potwierdzenie
+                        if not button_k1.value() or not button_k2.value():
                             in_update_confirm = True
+                            last_press_time = now
+                    if not button_k3.value():
                         settings_index = (settings_index + 1) % num_options
                         last_press_time = now
                     elif not button_k4.value():
