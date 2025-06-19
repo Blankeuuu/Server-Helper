@@ -8,7 +8,7 @@ import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.2.5"
+MAIN_VERSION = "1.2.6"
 
 LANGS = {
     "ENG": {
@@ -37,7 +37,8 @@ LANGS = {
         "NETWORK_NO": "enp3s0 no data",
         "BRIGHTNESS": "Brightness",
         "UPDATING": "Updating...",
-        "PROGRESS": "Progress"
+        "PROGRESS": "Progress",
+        "LATEST": "You have latest version"
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -65,11 +66,11 @@ LANGS = {
         "NETWORK_NO": "enp3s0 brak danych",
         "BRIGHTNESS": "Jasnosc",
         "UPDATING": "Aktualizacja...",
-        "PROGRESS": "Postęp"
+        "PROGRESS": "Postęp",
+        "LATEST": "Masz najnowszą wersję"
     }
 }
 
-# Ustawienia z nagłówkiem i przyciskiem update na końcu
 settings = [
     {"label": "LANG", "key": "lang", "options": ["ENG", "PL"]},
     {"label": "UNIT", "key": "unit", "options": ["B", "KB", "MB", "GB"]},
@@ -90,7 +91,7 @@ screen_off = False
 last_activity_time = time.ticks_ms()
 SLEEP_DURATION = 15 * 1000
 settings_scroll_offset = 0
-sleep_wake_ignore = False  # <--- nowa flaga ignorowania pierwszego kliknięcia po wybudzeniu
+sleep_wake_ignore = False
 
 SSID = conf.SSID
 PASSWORD = conf.PASSWORD
@@ -122,6 +123,23 @@ server_name = "Server"
 alert_active = False
 alert_message = ""
 alert_start_time = 0
+
+# --- Nowa logika wersji z githuba dla update ---
+def get_github_version():
+    # Pobiera wersję z main.py z githuba (szuka linii z MAIN_VERSION)
+    import urequests
+    try:
+        url = ugit.GITHUB_RAW_URL
+        r = urequests.get(url)
+        if r.status_code == 200:
+            for line in r.text.split("\n"):
+                if "MAIN_VERSION" in line and "=" in line:
+                    v = line.split("=")[1].strip().replace('"', '').replace("'", "")
+                    return v
+        r.close()
+    except Exception as e:
+        print("get_github_version error:", e)
+    return None
 
 def T(key):
     lang = settings_state.get("lang", "ENG")
@@ -413,64 +431,6 @@ def display_stats(data):
         draw_brightness_slider()
     oled.show()
 
-def draw_net_icon(x, y):
-    oled.line(x+4, y+8, x+4, y+2, 1)
-    oled.pixel(x+4, y+1, 1)
-    oled.pixel(x+2, y+4, 1)
-    oled.pixel(x+6, y+4, 1)
-    oled.pixel(x+1, y+6, 1)
-    oled.pixel(x+7, y+6, 1)
-    oled.pixel(x+0, y+8, 1)
-    oled.pixel(x+8, y+8, 1)
-
-def draw_upload_icon(x, y):
-    oled.vline(x+4, y+2, 8, 1)
-    oled.hline(x+2, y+2, 5, 1)
-    oled.pixel(x+4, y, 1)
-    oled.pixel(x+3, y+1, 1)
-    oled.pixel(x+5, y+1, 1)
-
-def draw_download_icon(x, y):
-    oled.vline(x+4, y, 8, 1)
-    oled.hline(x+2, y+6, 5, 1)
-    oled.pixel(x+4, y+8, 1)
-    oled.pixel(x+3, y+7, 1)
-    oled.pixel(x+5, y+7, 1)
-
-def draw_speed_icon(x, y):
-    for i in range(8):
-        angle = i * (3.1415/4)
-        dx = int(5 * math.cos(angle))
-        dy = int(5 * math.sin(angle))
-        oled.pixel(x+4+dx, y+4+dy, 1)
-    oled.ellipse(x+4, y+4, 3, 3, 1)
-
-def display_net_data(data):
-    oled.fill(0)
-    iface = None
-    unit = "MB"
-    if data and isinstance(data, list):
-        for i in data:
-            if i.get('interface_name', '') == 'enp3s0':
-                iface = i
-                break
-    draw_net_icon(4, 4)
-    oled.text("enp3s0", 20, 0, 1)
-    oled.hline(0, 12, 128, 1)
-    if iface:
-        sent = iface.get('bytes_sent', 0)
-        recv = iface.get('bytes_recv', 0)
-        speed = iface.get('speed', 0)
-        draw_upload_icon(4, 18)
-        oled.text(format_bytes_custom(sent, unit), 20, 16, 1)
-        draw_download_icon(4, 32)
-        oled.text(format_bytes_custom(recv, unit), 20, 30, 1)
-        draw_speed_icon(4, 46)
-        oled.text(format_bytes_custom(speed, unit)+"/s", 20, 44, 1)
-    else:
-        oled.text(T("NETWORK_NO"), 0, 28)
-    oled.show()
-
 def scroll_version_text(version, y, selected, now):
     max_width = 128 - 64 - 2
     char_width = 8
@@ -488,7 +448,6 @@ def scroll_version_text(version, y, selected, now):
 def display_settings_panel(now=0):
     oled.fill(0)
     global settings, settings_index, settings_state, settings_scroll_offset
-    # Nagłówek z ikoną i separator
     oled.rect(0, 0, 128, 12, 1)
     oled.text(T("SETTINGS"), 33, 2, 1)
     oled.hline(0, 12, 128, 1)
@@ -500,11 +459,9 @@ def display_settings_panel(now=0):
         settings_scroll_offset = settings_index - visible_lines + 1
     visible_settings = settings[settings_scroll_offset:settings_scroll_offset+visible_lines]
     visible_idx = 0
-    total_items = len(settings)
     for i, s in enumerate(visible_settings):
         y = 18 + 14 * visible_idx
         idx = settings_scroll_offset + i
-        # Upiększenie: ramka wokół wybranej opcji, separator pod nagłówkiem, kropki na scrollbarze
         if s.get("header"):
             oled.text("- " + T(s["label"]) + " -", 10, y, 1)
             oled.hline(0, y+10, 128, 1)
@@ -524,17 +481,9 @@ def display_settings_panel(now=0):
             val = settings_state[s["key"]]
             oled.text(f"{prefix}{T(s['label'])}: {val}", 4, y, 1)
         visible_idx += 1
-    # "Scroll bar" po prawej
-    bar_height = 38
-    bar_top = 16
-    if total_items > visible_lines:
-        bar_len = int(bar_height * visible_lines / total_items)
-        bar_pos = int(bar_height * settings_scroll_offset / total_items)
-        oled.fill_rect(124, bar_top + bar_pos, 2, bar_len, 1)
-        oled.rect(124, bar_top, 2, bar_height, 1)
     oled.show()
 
-def display_update_confirm():
+def display_update_confirm(github_version=None):
     oled.fill(0)
     oled.rect(0, 0, 128, 64, 1)
     oled.text(T("UPDATE"), 4, 8, 1)
@@ -542,6 +491,13 @@ def display_update_confirm():
     oled.text(T("CONFIRM_UPDATE"), 4, 28, 1)
     oled.text(T("YES"), 4, 48, 1)
     oled.text(T("NO"), 64, 48, 1)
+    # Dodatkowa linia: wersja aktualna -> nowa lub "Masz najnowszą wersję"
+    if github_version is not None:
+        if github_version == MAIN_VERSION:
+            msg = T("LATEST")
+        else:
+            msg = "{} -> {}".format(MAIN_VERSION, github_version)
+        oled.text(msg, 4, 58, 1)
     oled.show()
 
 def display_update_progress(progress=0):
@@ -598,7 +554,7 @@ def handle_sleep_mode():
     if is_sleep_time():
         if not button_k1.value() or not button_k2.value() or not button_k3.value() or not button_k4.value():
             if screen_off:
-                sleep_wake_ignore = True  # Po wybudzeniu ignoruj pierwsze kliknięcie!
+                sleep_wake_ignore = True
             screen_off = False
             last_activity_time = time.ticks_ms()
             oled.poweron()
@@ -620,6 +576,9 @@ def main():
     global brightness, slider_visible, slider_show_time, current_page, selected_disk_index
     global alert_active, alert_message, alert_start_time, server_name, sleep_wake_ignore
 
+    github_version = None
+    github_version_checked = False
+
     try:
         connect_wifi()
         fetch_server_name()
@@ -637,7 +596,6 @@ def main():
             if screen_off:
                 time.sleep(0.1)
                 continue
-            # Po wybudzeniu ignoruj pierwsze kliknięcie dowolnego przycisku
             if sleep_wake_ignore:
                 if any_button_pressed():
                     while any_button_pressed():
@@ -657,9 +615,13 @@ def main():
                     do_update_with_progress()
                     in_update_progress = False
                     in_settings = False
+                    github_version_checked = False
                     continue
                 if in_update_confirm:
-                    display_update_confirm()
+                    if not github_version_checked:
+                        github_version = get_github_version()
+                        github_version_checked = True
+                    display_update_confirm(github_version)
                     if time.ticks_diff(now, last_press_time) > debounce_delay:
                         if not button_k1.value():
                             in_update_confirm = False
@@ -679,6 +641,7 @@ def main():
                     elif s.get("update"):
                         if not button_k1.value() or not button_k2.value():
                             in_update_confirm = True
+                            github_version_checked = False
                             last_press_time = now
                         elif not button_k3.value():
                             settings_index = (settings_index + 1) % num_options
