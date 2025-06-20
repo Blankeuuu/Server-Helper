@@ -1,13 +1,13 @@
 # PicoServerMonitor
 
-A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry Pi Pico W and an SSD1306 OLED display. This project displays real-time server stats (CPU, RAM, temperature, disk usage, network info) and supports configuration via a hardware menu. It is designed for easy deployment and remote monitoring of home or small office servers.
+A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry Pi Pico 2W and an SSD1306 OLED display. This project displays real-time server stats (CPU, RAM, temperature, disk usage, network info) and supports configuration via a hardware menu. It is designed for easy deployment and remote monitoring of home or small office servers.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Usage](#usage)
 - [Function Descriptions](#function-descriptions)
-- [Configuration-confpy](#configuration-confpy)
+- [Configuration (conf.py)](#configuration-confpy)
 - [Server Setup](#server-setup)
 - [Update Settings](#update-settings)
 - [Known Issues](#known-issues)
@@ -18,33 +18,41 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 ## Installation
 
 **Hardware Requirements:**
-- Raspberry Pi Pico W (RP2040, WiFi, Bluetooth)
+- Raspberry Pi Pico 2W (RP2040, WiFi, Bluetooth)
 - SSD1306 0.96" OLED display (I2C, 128x64, 4-button panel)
 - MicroSD card (64GB recommended)
 - Ubuntu server (tested on 20.04/22.04)
 
 **Software Prerequisites:**
-- MicroPython firmware for Pico W ([Download here](https://micropython.org/download/rp2-pico-w/))
+- MicroPython firmware for Pico W/2W ([Download here](https://micropython.org/download/rp2-pico-w/))
 - [mpremote](https://github.com/micropython/micropython/tree/master/tools/mpremote) or [Thonny IDE](https://thonny.org/) for uploading files
 - Python 3.x on the server
 
 **Installation Steps:**
 
 1. **Flash MicroPython:**
-   - Download the latest MicroPython UF2 for Pico W.
+   - Download the latest MicroPython UF2 for Pico W/2W.
    - Hold the BOOTSEL button, connect Pico to USB, and drag the UF2 file to the RPI-RP2 drive.
 
 2. **Prepare the Project Files:**
    - Clone or download this repository.
-   - Edit `conf.py` with your WiFi and server details (see [Configuration-confpy](#configuration-confpy)).
-   - Upload all `.py` files (including `conf.py`) to the Pico W using Thonny or mpremote:
+   - Edit `conf.py` with your WiFi and server details (see [Configuration (conf.py)](#configuration-confpy)).
+   - Upload the following files to your Pico 2W using Thonny or mpremote:
+     - `main.py`
+     - `conf.py`
+     - `ssd1306.py`
+     - `ugit.py`
 
-     ```sh
-     mpremote connect  cp *.py :
+     Przykład z mpremote:
+     ```
+     mpremote connect  cp main.py :
+     mpremote connect  cp conf.py :
+     mpremote connect  cp ssd1306.py :
+     mpremote connect  cp ugit.py :
      ```
 
 3. **Connect Hardware:**
-   - Wire the SSD1306 display to the Pico W (I2C: SCL=GP1, SDA=GP0).
+   - Wire the SSD1306 display to the Pico 2W (I2C: SCL=GP1, SDA=GP0).
    - Connect the four buttons to GP2, GP3, GP4, GP5 (active low with pull-ups).
 
 4. **Insert MicroSD (optional):**
@@ -54,7 +62,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 
 ## Usage
 
-- **Power the Pico W:** Connect via USB or 5V supply.
+- **Power the Pico 2W:** Connect via USB or 5V supply.
 - **Boot:** The display will show server connection status and stats.
 - **Navigation:**
   - K1: Increase value / Previous disk / Increase brightness
@@ -130,11 +138,9 @@ def save(settings_dict):
 
 ## Server Setup
 
-**Server Requirements:**
-- Ubuntu server with Python 3.x
-- [psutil](https://pypi.org/project/psutil/) and [Flask](https://pypi.org/project/Flask/) installed
+### 1. Instalacja wymaganych pakietów
 
-**Install dependencies:**
+Na serwerze Ubuntu zainstaluj wymagane pakiety:
 
 ```sh
 sudo apt update
@@ -142,7 +148,15 @@ sudo apt install python3-pip
 pip3 install flask psutil
 ```
 
-**Example server-side script:**
+### 2. Utwórz folder na API
+
+Przykład:
+```sh
+mkdir ~/server-helper-api
+cd ~/server-helper-api
+```
+
+### 3. Stwórz plik `server_api.py` z poniższą zawartością
 
 ```python
 from flask import Flask, jsonify
@@ -161,13 +175,11 @@ def mem():
 
 @app.route("/api/sensors")
 def sensors():
-    # Example: return CPU temperature
-    try:
-        import sensors
-        temps = sensors.get_temperatures()
-        return jsonify([{"label": "CPUTIN", "value": temps["coretemp"].current}])
-    except:
-        return jsonify([])
+    # Example: return CPU temperature if available
+    temps = psutil.sensors_temperatures()
+    if "coretemp" in temps:
+        return jsonify([{"label": "CPUTIN", "value": temps["coretemp"][0].current}])
+    return jsonify([])
 
 @app.route("/api/disk")
 def disk():
@@ -201,15 +213,50 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=61208)
 ```
 
-- Save as `server_api.py` and run: `python3 server_api.py`
-- Ensure your firewall allows port 61208.
+### 4. (Opcjonalnie) Stwórz usługę systemd
+
+Aby API uruchamiało się automatycznie po starcie serwera:
+
+```sh
+sudo nano /etc/systemd/system/server-helper-api.service
+```
+
+Wklej poniższą konfigurację (zmień ścieżki na swoje):
+
+```
+[Unit]
+Description=Server Helper API
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/server-helper-api
+ExecStart=/usr/bin/python3 /home/ubuntu/server-helper-api/server_api.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Zapisz i aktywuj usługę:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable server-helper-api
+sudo systemctl start server-helper-api
+```
+
+### 5. Sprawdź działanie
+
+- API powinno być dostępne na porcie 61208.
+- Sprawdź w przeglądarce: `http://:61208/api/cpu`
 
 ---
 
 ## Update Settings
 
 - **OTA Update:** In the settings menu, select "Update" and confirm. The device will fetch and apply the latest code using the `ugit` module.
-- **Manual Update:** Upload new `.py` files via Thonny or mpremote.
+- **Manual Update:** Upload new `.py` files (`main.py`, `conf.py`, `ssd1306.py`, `ugit.py`) via Thonny or mpremote.
 
 ---
 
@@ -226,7 +273,7 @@ if __name__ == "__main__":
 ## Links
 
 - [Project Repository](https://github.com/Blankeuuu/Server-Helper)
-- [MicroPython for Pico W](https://micropython.org/download/rp2-pico-w/)
+- [MicroPython for Pico W/2W](https://micropython.org/download/rp2-pico-w/)
 - [SSD1306 MicroPython Driver](https://github.com/micropython/micropython/blob/master/drivers/display/ssd1306.py)
 - [Thonny IDE](https://thonny.org/)
 - [mpremote Tool](https://github.com/micropython/micropython/tree/master/tools/mpremote)
@@ -236,4 +283,3 @@ if __name__ == "__main__":
 ---
 
 For questions or contributions, please open an issue or pull request on the [GitHub repository](https://github.com/Blankeuuu/Server-Helper).
-```
