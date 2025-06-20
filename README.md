@@ -230,8 +230,8 @@ systemctl status glances
 ## Links
 
 - [Project Repository](https://github.com/Blankeuuu/Server-Helper)
-- [MicroPython for Pico W/2W](https://micropython.org/download/rp2-pico-w/)
-- [SSD1306 MicroPython Driver](https://github.com/micropython/micropython/blob/master/drivers/display/ssd1306.py)
+- [MicroPython for Pico W/2W]([https://micropython.org/download/rp2-pico-w/](https://micropython.org/download/RPI_PICO2_W/))
+- [SSD1306 MicroPython Driver](https://github.com/stlehmann/micropython-ssd1306)
 - [Thonny IDE](https://thonny.org/)
 - [mpremote Tool](https://github.com/micropython/micropython/tree/master/tools/mpremote)
 - [Glances Documentation](https://nicolargo.github.io/glances/)
