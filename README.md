@@ -1,4 +1,4 @@
-# PicoServerMonitor
+# Server Helper
 
 A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry Pi Pico 2W and an SSD1306 OLED display. This project displays real-time server stats (CPU, RAM, temperature, disk usage, network info) and supports configuration via a hardware menu. It is designed for easy deployment and remote monitoring of home or small office servers.
 
