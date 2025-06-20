@@ -1,15 +1,3 @@
-Twój plik README.md nie sformatował się poprawnie, ponieważ:
-
-- Niektóre sekcje mają zduplikowane lub niezamknięte znaczniki kodu (```)
-- Kod wstawiony w sekcjach nie jest oddzielony poprawnie od tekstu
-- Brakuje odstępów i nowych linii między nagłówkami, listami i blokami kodu
-- W tabelach są błędy formatowania (np. brak pustej linii przed i po tabeli)
-- Linki i opisy miejscami są zlane z tekstem
-
-Poniżej znajdziesz poprawioną, gotową do użycia wersję README.md. Wklej ją do pliku `README.md` w głównym katalogu repozytorium na GitHubie (`Server-Helper`). Dzięki temu GitHub automatycznie wyświetli ją na stronie projektu[4].
-
----
-
 ```
 # PicoServerMonitor
 
