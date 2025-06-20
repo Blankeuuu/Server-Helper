@@ -1,4 +1,16 @@
-```markdown
+Twój plik README.md nie sformatował się poprawnie, ponieważ:
+
+- Niektóre sekcje mają zduplikowane lub niezamknięte znaczniki kodu (```)
+- Kod wstawiony w sekcjach nie jest oddzielony poprawnie od tekstu
+- Brakuje odstępów i nowych linii między nagłówkami, listami i blokami kodu
+- W tabelach są błędy formatowania (np. brak pustej linii przed i po tabeli)
+- Linki i opisy miejscami są zlane z tekstem
+
+Poniżej znajdziesz poprawioną, gotową do użycia wersję README.md. Wklej ją do pliku `README.md` w głównym katalogu repozytorium na GitHubie (`Server-Helper`). Dzięki temu GitHub automatycznie wyświetli ją na stronie projektu[4].
+
+---
+
+```
 # PicoServerMonitor
 
 A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry Pi Pico W and an SSD1306 OLED display. This project displays real-time server stats (CPU, RAM, temperature, disk usage, network info) and supports configuration via a hardware menu. It is designed for easy deployment and remote monitoring of home or small office servers.
@@ -8,7 +20,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 - [Installation](#installation)
 - [Usage](#usage)
 - [Function Descriptions](#function-descriptions)
-- [Configuration (conf.py)](#configuration-confpy)
+- [Configuration-confpy](#configuration-confpy)
 - [Server Setup](#server-setup)
 - [Update Settings](#update-settings)
 - [Known Issues](#known-issues)
@@ -37,12 +49,12 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 
 2. **Prepare the Project Files:**
    - Clone or download this repository.
-   - Edit `conf.py` with your WiFi and server details (see [Configuration](#configuration-confpy)).
-   - Upload all `.py` files (including `conf.py`) to the Pico W using Thonny or mpremote.
+   - Edit `conf.py` with your WiFi and server details (see [Configuration-confpy](#configuration-confpy)).
+   - Upload all `.py` files (including `conf.py`) to the Pico W using Thonny or mpremote:
 
-   ```
-   mpremote connect  cp *.py :
-   ```
+     ```sh
+     mpremote connect  cp *.py :
+     ```
 
 3. **Connect Hardware:**
    - Wire the SSD1306 display to the Pico W (I2C: SCL=GP1, SDA=GP0).
@@ -71,24 +83,24 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 
 ## Function Descriptions
 
-| Function                | Description                                                                                 |
-|-------------------------|---------------------------------------------------------------------------------------------|
-| `main()`                | Main loop: handles UI, button input, data fetching, sleep/eco logic                        |
-| `fetch_data()`          | Fetches CPU, RAM, and temperature stats from the server                                     |
-| `fetch_disk_data()`     | Retrieves disk usage info from the server                                                   |
-| `fetch_net_data()`      | Retrieves network interface stats from the server                                           |
-| `display_stats()`       | Renders CPU, RAM, and temperature on the OLED display                                       |
-| `display_disk_details()`| Shows disk usage, allows cycling through disks                                              |
-| `display_net_data()`    | Shows network stats (sent/received, speed, IP)                                              |
-| `display_settings_panel()`| Draws the settings menu and handles navigation                                            |
-| `save_settings()`       | Saves current settings to `conf.py`                                                         |
-| `reset_settings()`      | Restores settings to defaults                                                               |
-| `do_update_with_progress()`| Handles OTA update progress and triggers update script (`ugit.update_main()`)             |
-| `connect_wifi()`        | Connects to WiFi using credentials from `conf.py`                                           |
-| `ascii_polish()`        | Converts Polish characters to ASCII for OLED compatibility                                  |
-| `trigger_alert()`       | Displays alert messages for critical server states                                          |
-| `eco_mode_active()`     | Determines if eco mode should dim the display                                               |
-| `is_sleep_time()`       | Checks if the device should enter sleep mode based on settings                              |
+| Function                    | Description                                                                                 |
+|-----------------------------|---------------------------------------------------------------------------------------------|
+| `main()`                    | Main loop: handles UI, button input, data fetching, sleep/eco logic                        |
+| `fetch_data()`              | Fetches CPU, RAM, and temperature stats from the server                                     |
+| `fetch_disk_data()`         | Retrieves disk usage info from the server                                                   |
+| `fetch_net_data()`          | Retrieves network interface stats from the server                                           |
+| `display_stats()`           | Renders CPU, RAM, and temperature on the OLED display                                       |
+| `display_disk_details()`    | Shows disk usage, allows cycling through disks                                              |
+| `display_net_data()`        | Shows network stats (sent/received, speed, IP)                                              |
+| `display_settings_panel()`  | Draws the settings menu and handles navigation                                              |
+| `save_settings()`           | Saves current settings to `conf.py`                                                         |
+| `reset_settings()`          | Restores settings to defaults                                                               |
+| `do_update_with_progress()` | Handles OTA update progress and triggers update script (`ugit.update_main()`)               |
+| `connect_wifi()`            | Connects to WiFi using credentials from `conf.py`                                           |
+| `ascii_polish()`            | Converts Polish characters to ASCII for OLED compatibility                                  |
+| `trigger_alert()`           | Displays alert messages for critical server states                                          |
+| `eco_mode_active()`         | Determines if eco mode should dim the display                                               |
+| `is_sleep_time()`           | Checks if the device should enter sleep mode based on settings                              |
 
 ---
 
@@ -96,7 +108,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 
 The `conf.py` file stores all user-editable settings. Example:
 
-```
+```python
 SSID = "YourWiFiSSID"
 PASSWORD = "YourWiFiPassword"
 SERVER_URL = "http://192.168.1.100:61208"
@@ -137,7 +149,7 @@ def save(settings_dict):
 
 **Install dependencies:**
 
-```
+```sh
 sudo apt update
 sudo apt install python3-pip
 pip3 install flask psutil
@@ -145,7 +157,7 @@ pip3 install flask psutil
 
 **Example server-side script:**
 
-```
+```python
 from flask import Flask, jsonify
 import psutil
 import platform
@@ -226,7 +238,7 @@ if __name__ == "__main__":
 
 ## Links
 
-- [Project Repository](https://github.com/yourusername/PicoServerMonitor)
+- [Project Repository](https://github.com/Blankeuuu/Server-Helper)
 - [MicroPython for Pico W](https://micropython.org/download/rp2-pico-w/)
 - [SSD1306 MicroPython Driver](https://github.com/micropython/micropython/blob/master/drivers/display/ssd1306.py)
 - [Thonny IDE](https://thonny.org/)
@@ -236,7 +248,7 @@ if __name__ == "__main__":
 
 ---
 
-For questions or contributions, please open an issue or pull request on the [GitHub repository](https://github.com/yourusername/PicoServerMonitor).
+For questions or contributions, please open an issue or pull request on the [GitHub repository](https://github.com/Blankeuuu/Server-Helper).
 ```
 
-[1] https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/71489895/8579a121-f966-474b-8bb4-3acf39c04ddd/paste.txt
+---
