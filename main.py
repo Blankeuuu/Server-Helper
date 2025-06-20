@@ -2,13 +2,14 @@ import network
 import time
 import urequests
 import gc
+import ntptime
 from machine import Pin, I2C, reset
 import ssd1306
 import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.2.6"
+MAIN_VERSION = "1.2.8"
 
 LANGS = {
     "ENG": {
@@ -39,7 +40,11 @@ LANGS = {
         "BRIGHTNESS": "Brightness",
         "UPDATING": "Updating...",
         "PROGRESS": "Progress",
-        "TIMEZONE": "Timezone"
+        "TIMEZONE": "Timezone",
+        "ECO_MODE": "Eco Mode",
+        "RESET_DEFAULTS": "Reset Defaults",
+        "RESET_CONFIRM": "Reset all settings?",
+        "RESET_DONE": "Defaults loaded!"
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -69,7 +74,11 @@ LANGS = {
         "BRIGHTNESS": "Jasnosc",
         "UPDATING": "Aktualizacja...",
         "PROGRESS": "Postęp",
-        "TIMEZONE": "Strefa czasowa"
+        "TIMEZONE": "Strefa czasowa",
+        "ECO_MODE": "Tryb Eco",
+        "RESET_DEFAULTS": "Przywróć domyślne",
+        "RESET_CONFIRM": "Przywrócić ustawienia?",
+        "RESET_DONE": "Domyślne ustawienia!"
     }
 }
 
@@ -79,11 +88,13 @@ settings = [
     {"label": "LANG", "key": "lang", "options": ["ENG", "PL"]},
     {"label": "UNIT", "key": "unit", "options": ["B", "KB", "MB", "GB"]},
     {"label": "REFRESH", "key": "refresh", "min": 1, "max": 60, "step": 1},
+    {"label": "ECO_MODE", "key": "eco_mode", "options": [0, 1]},
     {"label": "SLEEP_MODE", "header": True},
     {"label": "SLEEP_ENABLED", "key": "sleep_enabled", "options": [0, 1]},
     {"label": "SLEEP_START", "key": "sleep_start", "min": 0, "max": 23, "step": 1},
     {"label": "SLEEP_END", "key": "sleep_end", "min": 0, "max": 23, "step": 1},
-    {"label": "TIMEZONE", "key": "timezone", "min": -12, "max": 14, "step": 1}
+    {"label": "TIMEZONE", "key": "timezone", "min": -12, "max": 14, "step": 1},
+    {"label": "RESET_DEFAULTS", "reset": True}
 ]
 
 settings_state = conf.settings.copy()
@@ -92,9 +103,11 @@ settings_index = 0
 in_settings = False
 in_update_confirm = False
 in_update_progress = False
+in_reset_confirm = False
 screen_off = False
 last_activity_time = time.ticks_ms()
 SLEEP_DURATION = 15 * 1000
+ECO_TIMEOUT = 120 * 1000  # 2 min
 settings_scroll_offset = 0
 sleep_wake_ignore = False
 
@@ -117,6 +130,7 @@ button_k3 = Pin(4, Pin.IN, Pin.PULL_UP)
 button_k4 = Pin(5, Pin.IN, Pin.PULL_UP)
 
 brightness = 128
+eco_brightness = 30
 slider_visible = False
 slider_show_time = 0
 current_page = 0
@@ -129,6 +143,10 @@ alert_active = False
 alert_message = ""
 alert_start_time = 0
 
+wifi_reconnect_time = 0
+wifi_last_status = False
+wifi = None
+
 def T(key):
     lang = settings_state.get("lang", "ENG")
     return LANGS[lang][key]
@@ -140,6 +158,11 @@ def ascii_polish(text):
 
 def save_settings():
     conf.save(settings_state)
+
+def reset_settings():
+    global settings_state
+    settings_state = conf.DEFAULTS.copy()
+    save_settings()
 
 def trigger_alert(msg):
     global alert_active, alert_message, alert_start_time
@@ -184,16 +207,30 @@ def set_brightness(value):
     brightness = max(0, min(255, value))
     oled.contrast(brightness)
 
-def connect_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    wlan.connect(SSID, PASSWORD)
-    for _ in range(20):
-        if wlan.isconnected():
-            return wlan
-        time.sleep(1)
-    trigger_alert("Brak WiFi!")
-    raise RuntimeError("Nie udalo sie polaczyc z WiFi")
+def connect_wifi(auto_reconnect=True):
+    global wifi, wifi_last_status, wifi_reconnect_time
+    if wifi is None:
+        wifi = network.WLAN(network.STA_IF)
+    wifi.active(True)
+    if not wifi.isconnected():
+        wifi.connect(SSID, PASSWORD)
+        timeout = 10
+        while timeout > 0:
+            if wifi.isconnected():
+                break
+            time.sleep(1)
+            timeout -= 1
+    wifi_last_status = wifi.isconnected()
+    wifi_reconnect_time = time.ticks_ms()
+    return wifi
+
+def ensure_wifi():
+    global wifi_reconnect_time
+    now = time.ticks_ms()
+    if wifi is None or not wifi.isconnected():
+        if time.ticks_diff(now, wifi_reconnect_time) > 10000:
+            connect_wifi()
+    return wifi and wifi.isconnected()
 
 def fetch_server_name():
     global server_name
@@ -267,6 +304,16 @@ def fetch_net_data():
     except Exception as e:
         print('Net data error:', e)
         return None
+
+def get_server_ip():
+    # Wyciągnięcie IP z SERVER_URL (np. http://192.168.50.4:61208)
+    url = conf.SERVER_URL
+    if "://" in url:
+        url = url.split("://",1)[1]
+    if "/" in url:
+        url = url.split("/",1)[0]
+    ip = url.split(":")[0]
+    return ip
 
 def draw_brightness_slider():
     oled.fill_rect(0, 54, 128, 10, 0)
@@ -380,6 +427,7 @@ def draw_wifi_icon(x, y, connected=True):
 def display_stats(data):
     oled.fill(0)
     global server_name
+    # Wyśrodkowana nazwa serwera na górze (czas usunięty)
     name_disp = ascii_polish(server_name)
     x_name = (128 - len(name_disp)*8)//2
     oled.text(name_disp, x_name, 0, 1)
@@ -410,8 +458,8 @@ def display_stats(data):
     oled.rect(88, 34, 40, 4, 1)
     oled.text("TEMP", 92, 40, 1)
     oled.hline(0, 52, 128, 1)
-    wlan = network.WLAN(network.STA_IF)
-    wifi_ok = wlan.isconnected()
+    wlan = wifi
+    wifi_ok = wlan and wlan.isconnected()
     draw_wifi_icon(2, 54, wifi_ok)
     ssid_disp = ascii_polish(SSID)
     oled.text(ssid_disp, 24, 56, 1)
@@ -451,6 +499,13 @@ def draw_speed_icon(x, y):
         oled.pixel(x+4+dx, y+4+dy, 1)
     oled.ellipse(x+4, y+4, 3, 3, 1)
 
+def draw_ip_icon(x, y):
+    # Prosta ikonka IP (monitor z kropką)
+    oled.rect(x, y, 16, 10, 1)
+    oled.hline(x+3, y+8, 10, 1)
+    oled.fill_rect(x+7, y+11, 2, 2, 1)
+    oled.pixel(x+14, y+12, 1)
+
 def display_net_data(data):
     oled.fill(0)
     iface = None
@@ -475,7 +530,16 @@ def display_net_data(data):
         oled.text(format_bytes_custom(speed, unit)+"/s", 20, 44, 1)
     else:
         oled.text(T("NETWORK_NO"), 0, 28)
+    # IP serwera centralnie pod bandwidth z własną ikoną
+    ip = get_server_ip()
+    x_ip = (128 - len(ip)*8)//2
+    draw_ip_icon(x_ip-18, 54)  # Ikona z lewej strony IP
+    oled.text(ip, x_ip, 56, 1)
     oled.show()
+
+# ...pozostałe funkcje jak w poprzedniej wersji (display_settings_panel, main, eco mode, sleep, obsługa przycisków itd.)...
+
+# Skopiuj resztę kodu z poprzedniej wersji, bo nie wymaga zmian dla tych funkcji.
 
 def scroll_version_text(version, y, selected, now):
     max_width = 64
@@ -522,15 +586,20 @@ def display_settings_panel(now=0):
                 oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
             oled.text(f"{prefix}{T('UPDATE')}", 4, y, 1)
+        elif s.get("reset"):
+            if idx == settings_index:
+                oled.rect(0, y-2, 128, 14, 1)
+                oled.fill_rect(2, y, 124, 10, 0)
+            prefix = ">" if idx == settings_index else " "
+            oled.text(f"{prefix}{T('RESET_DEFAULTS')}", 4, y, 1)
         else:
             if idx == settings_index:
                 oled.rect(0, y-2, 128, 14, 1)
                 oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
-            if s["key"] == "sleep_enabled":
-                val = "On" if settings_state["sleep_enabled"] else "Off"
-            else:
-                val = settings_state[s["key"]]
+            val = settings_state[s["key"]]
+            if s["key"] == "sleep_enabled" or s["key"] == "eco_mode":
+                val = "On" if val else "Off"
             oled.text(f"{prefix}{T(s['label'])}: {val}", 4, y, 1)
         visible_idx += 1
     oled.show()
@@ -544,6 +613,23 @@ def display_update_confirm():
     oled.text(T("YES"), 4, 48, 1)
     oled.text(T("NO"), 64, 48, 1)
     oled.show()
+
+def display_reset_confirm():
+    oled.fill(0)
+    oled.rect(0, 0, 128, 64, 1)
+    oled.text(T("RESET_DEFAULTS"), 4, 8, 1)
+    oled.hline(0, 18, 128, 1)
+    oled.text(T("RESET_CONFIRM"), 4, 28, 1)
+    oled.text(T("YES"), 4, 48, 1)
+    oled.text(T("NO"), 64, 48, 1)
+    oled.show()
+
+def display_reset_done():
+    oled.fill(0)
+    oled.rect(0, 0, 128, 64, 1)
+    oled.text(T("RESET_DONE"), 12, 28, 1)
+    oled.show()
+    time.sleep(1)
 
 def display_update_progress(progress=0):
     oled.fill(0)
@@ -624,178 +710,218 @@ def handle_sleep_mode():
         oled.poweron()
         oled.contrast(brightness)
 
+def eco_mode_active():
+    if settings_state.get("eco_mode", 0):
+        now = time.ticks_ms()
+        return time.ticks_diff(now, last_activity_time) > ECO_TIMEOUT
+    return False
+
 def any_button_pressed():
     return (not button_k1.value() or not button_k2.value() or
             not button_k3.value() or not button_k4.value())
 
 def main():
-    global settings_index, in_settings, in_update_confirm, in_update_progress, settings_scroll_offset
+    global settings_index, in_settings, in_update_confirm, in_update_progress, in_reset_confirm, settings_scroll_offset
     global brightness, slider_visible, slider_show_time, current_page, selected_disk_index
-    global alert_active, alert_message, alert_start_time, server_name, sleep_wake_ignore
+    global alert_active, alert_message, alert_start_time, server_name, sleep_wake_ignore, last_activity_time
 
+    connect_wifi()
     try:
-        connect_wifi()
-        fetch_server_name()
-        set_brightness(brightness)
-        last_press_time = time.ticks_ms()
-        debounce_delay = 200
-        last_fetch = time.ticks_ms() - settings_state["refresh"] * 1000
-        data = fetch_data()
-        disk_data = None
-        net_data = None
+        ntptime.settime()
+    except:
+        pass
+    fetch_server_name()
+    set_brightness(brightness)
+    last_press_time = time.ticks_ms()
+    debounce_delay = 200
+    last_fetch = time.ticks_ms() - settings_state["refresh"] * 1000
+    data = fetch_data()
+    disk_data = None
+    net_data = None
 
-        while True:
-            now = time.ticks_ms()
-            handle_sleep_mode()
-            if screen_off:
-                time.sleep(0.1)
+    eco_active = False
+
+    while True:
+        now = time.ticks_ms()
+        ensure_wifi()
+        handle_sleep_mode()
+
+        if eco_mode_active():
+            if not eco_active:
+                set_brightness(eco_brightness)
+                eco_active = True
+        else:
+            if eco_active:
+                set_brightness(brightness)
+                eco_active = False
+
+        if screen_off:
+            time.sleep(0.1)
+            continue
+        if sleep_wake_ignore:
+            if any_button_pressed():
+                while any_button_pressed():
+                    time.sleep(0.01)
+                sleep_wake_ignore = False
+            continue
+        if alert_active:
+            show_alert(alert_message, now)
+            check_alert_clear()
+            if time.ticks_diff(now, alert_start_time) > 10000:
+                alert_active = False
+            time.sleep(0.05)
+            continue
+        if in_settings:
+            num_options = len(settings)
+            if in_update_progress:
+                do_update_with_progress()
+                in_update_progress = False
+                in_settings = False
                 continue
-            if sleep_wake_ignore:
-                if any_button_pressed():
-                    while any_button_pressed():
-                        time.sleep(0.01)
-                    sleep_wake_ignore = False
-                continue
-            if alert_active:
-                show_alert(alert_message, now)
-                check_alert_clear()
-                if time.ticks_diff(now, alert_start_time) > 10000:
-                    alert_active = False
+            if in_update_confirm:
+                display_update_confirm()
+                if not button_k1.value():
+                    in_update_confirm = False
+                    in_update_progress = True
+                elif not button_k2.value():
+                    in_update_confirm = False
                 time.sleep(0.05)
                 continue
-            if in_settings:
-                num_options = len(settings)
-                if in_update_progress:
-                    do_update_with_progress()
-                    in_update_progress = False
-                    in_settings = False
-                    continue
-                if in_update_confirm:
-                    display_update_confirm()
-                    if time.ticks_diff(now, last_press_time) > debounce_delay:
-                        if not button_k1.value():
-                            in_update_confirm = False
-                            in_update_progress = True
-                            last_press_time = now
-                        elif not button_k2.value():
-                            in_update_confirm = False
-                            last_press_time = now
-                    time.sleep(0.05)
-                    continue
-                if time.ticks_diff(now, last_press_time) > debounce_delay:
-                    s = settings[settings_index]
-                    if s.get("header"):
-                        if not button_k3.value():
-                            settings_index = (settings_index + 1) % num_options
-                            last_press_time = now
-                    elif s.get("update"):
-                        if not button_k1.value() or not button_k2.value():
-                            in_update_confirm = True
-                            last_press_time = now
-                        elif not button_k3.value():
-                            settings_index = (settings_index + 1) % num_options
-                            last_press_time = now
+            if in_reset_confirm:
+                display_reset_confirm()
+                if not button_k1.value():
+                    in_reset_confirm = False
+                    reset_settings()
+                    display_reset_done()
+                elif not button_k2.value():
+                    in_reset_confirm = False
+                time.sleep(0.05)
+                continue
+            s = settings[settings_index]
+            if s.get("header"):
+                if not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    settings_index = (settings_index + 1) % num_options
+                    last_press_time = now
+            elif s.get("update"):
+                if (not button_k1.value() or not button_k2.value()) and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    in_update_confirm = True
+                    last_press_time = now
+                elif not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    settings_index = (settings_index + 1) % num_options
+                    last_press_time = now
+            elif s.get("reset"):
+                if (not button_k1.value() or not button_k2.value()) and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    in_reset_confirm = True
+                    last_press_time = now
+                elif not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    settings_index = (settings_index + 1) % num_options
+                    last_press_time = now
+            else:
+                key = s["key"]
+                if not button_k1.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    if "options" in s:
+                        idx = s["options"].index(settings_state[key])
+                        settings_state[key] = s["options"][(idx + 1) % len(s["options"])]
                     else:
-                        key = s["key"]
-                        if not button_k1.value():
-                            if "options" in s:
-                                idx = s["options"].index(settings_state[key])
-                                settings_state[key] = s["options"][(idx + 1) % len(s["options"])]
-                            else:
-                                settings_state[key] = min(s["max"], settings_state[key] + s["step"])
-                            save_settings()
-                            last_press_time = now
-                        elif not button_k2.value():
-                            if "options" in s:
-                                idx = s["options"].index(settings_state[key])
-                                settings_state[key] = s["options"][(idx - 1) % len(s["options"])]
-                            else:
-                                settings_state[key] = max(s["min"], settings_state[key] - s["step"])
-                            save_settings()
-                            last_press_time = now
-                        elif not button_k3.value():
-                            settings_index = (settings_index + 1) % num_options
-                            last_press_time = now
-                    if not button_k4.value():
-                        in_settings = False
-                        settings_index = 0
-                        settings_scroll_offset = 0
-                        last_press_time = now
-                display_settings_panel(now)
-                time.sleep(0.05)
-                continue
-            if time.ticks_diff(now, last_press_time) > debounce_delay:
-                if current_page == 1 and filtered_disks:
-                    if not button_k1.value():
-                        selected_disk_index = (selected_disk_index - 1) % len(filtered_disks)
-                        last_press_time = now
-                    elif not button_k2.value():
-                        selected_disk_index = (selected_disk_index + 1) % len(filtered_disks)
-                        last_press_time = now
-                    elif not button_k3.value():
-                        current_page = 2
-                        net_data = fetch_net_data()
-                        last_press_time = now
-                elif current_page == 2:
-                    if not button_k3.value():
-                        current_page = 0
-                        last_press_time = now
-                else:
-                    if not button_k1.value():
-                        set_brightness(brightness + 15)
-                        slider_visible = True
-                        slider_show_time = now
-                        last_press_time = now
-                    elif not button_k2.value():
-                        set_brightness(brightness - 15)
-                        slider_visible = True
-                        slider_show_time = now
-                        last_press_time = now
-                    elif not button_k3.value():
-                        if current_page == 0:
-                            current_page = 1
-                            disk_data = fetch_disk_data()
-                            update_filtered_disks(disk_data)
-                            selected_disk_index = 0
-                        elif current_page == 1:
-                            current_page = 2
-                            net_data = fetch_net_data()
-                        elif current_page == 2:
-                            current_page = 0
-                        last_press_time = now
-                    elif not button_k4.value():
-                        in_settings = True
-                        settings_index = 0
-                        settings_scroll_offset = 0
-                        last_press_time = now
-            if slider_visible and time.ticks_diff(now, slider_show_time) > 3000:
-                slider_visible = False
-            if time.ticks_diff(now, last_fetch) > settings_state["refresh"] * 1000:
+                        settings_state[key] = min(s["max"], settings_state[key] + s["step"])
+                    save_settings()
+                    last_press_time = now
+                elif not button_k2.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    if "options" in s:
+                        idx = s["options"].index(settings_state[key])
+                        settings_state[key] = s["options"][(idx - 1) % len(s["options"])]
+                    else:
+                        settings_state[key] = max(s["min"], settings_state[key] - s["step"])
+                    save_settings()
+                    last_press_time = now
+                elif not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                    settings_index = (settings_index + 1) % num_options
+                    last_press_time = now
+            if not button_k4.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                in_settings = False
+                settings_index = 0
+                settings_scroll_offset = 0
+                last_press_time = now
+            display_settings_panel(now)
+            time.sleep(0.05)
+            continue
+        if any_button_pressed():
+            last_activity_time = time.ticks_ms()
+        if current_page == 1 and filtered_disks:
+            if not button_k1.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                selected_disk_index = (selected_disk_index - 1) % len(filtered_disks)
+                last_press_time = now
+            elif not button_k2.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                selected_disk_index = (selected_disk_index + 1) % len(filtered_disks)
+                last_press_time = now
+            elif not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                current_page = 2
+                net_data = fetch_net_data()
+                last_press_time = now
+        elif current_page == 2:
+            if not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                current_page = 0
+                last_press_time = now
+        else:
+            if not button_k1.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                set_brightness(brightness + 15)
+                slider_visible = True
+                slider_show_time = now
+                last_press_time = now
+            elif not button_k2.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                set_brightness(brightness - 15)
+                slider_visible = True
+                slider_show_time = now
+                last_press_time = now
+            elif not button_k3.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
                 if current_page == 0:
+                    current_page = 1
+                    disk_data = fetch_disk_data()
+                    update_filtered_disks(disk_data)
+                    selected_disk_index = 0
+                elif current_page == 1:
+                    current_page = 2
+                    net_data = fetch_net_data()
+                elif current_page == 2:
+                    current_page = 0
+                last_press_time = now
+            elif not button_k4.value() and time.ticks_diff(now, last_press_time) > debounce_delay:
+                in_settings = True
+                settings_index = 0
+                settings_scroll_offset = 0
+                last_press_time = now
+        if slider_visible and time.ticks_diff(now, slider_show_time) > 3000:
+            slider_visible = False
+        if time.ticks_diff(now, last_fetch) > settings_state["refresh"] * 1000:
+            if current_page == 0:
+                try:
                     data = fetch_data()
                     fetch_server_name()
-                elif current_page == 1:
+                except:
+                    trigger_alert("Serwer offline!")
+            elif current_page == 1:
+                try:
                     disk_data = fetch_disk_data()
                     update_filtered_disks(disk_data)
                     if selected_disk_index >= len(filtered_disks):
                         selected_disk_index = 0
-                elif current_page == 2:
-                    net_data = fetch_net_data()
-                last_fetch = now
-                check_alert_triggers(data, disk_data)
-            if current_page == 0:
-                display_stats(data)
-            elif current_page == 1:
-                display_disk_details()
+                except:
+                    trigger_alert("Serwer offline!")
             elif current_page == 2:
-                display_net_data(net_data)
-            time.sleep(0.05)
-            gc.collect()
-    except Exception as e:
-        trigger_alert("Krytyczny blad!")
-        print(f"Krytyczny blad: {e}")
-        time.sleep(5)
-        reset()
+                try:
+                    net_data = fetch_net_data()
+                except:
+                    trigger_alert("Serwer offline!")
+            last_fetch = now
+            check_alert_triggers(data, disk_data)
+        if current_page == 0:
+            display_stats(data)
+        elif current_page == 1:
+            display_disk_details()
+        elif current_page == 2:
+            display_net_data(net_data)
+        time.sleep(0.03)
+        gc.collect()
 
 if __name__ == "__main__":
     main()
