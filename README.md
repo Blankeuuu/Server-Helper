@@ -31,7 +31,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 **Installation Steps:**
 
 1. **Flash MicroPython:**
-   - Download the latest MicroPython UF2 for Pico W/2W.
+   - Download the latest MicroPython UF2 for Pico 2W.
    - Hold the BOOTSEL button, connect Pico to USB, and drag the UF2 file to the RPI-RP2 drive.
 
 2. **Prepare the Project Files:**
@@ -43,8 +43,8 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
      - `ssd1306.py`
      - `ugit.py`
 
-     Przykład z mpremote:
-     ```
+     Example with mpremote:
+     ```sh
      mpremote connect  cp main.py :
      mpremote connect  cp conf.py :
      mpremote connect  cp ssd1306.py :
@@ -138,118 +138,75 @@ def save(settings_dict):
 
 ## Server Setup
 
-### 1. Instalacja wymaganych pakietów
+The server-side component uses **Glances** with its built-in REST API.
 
-Na serwerze Ubuntu zainstaluj wymagane pakiety:
+### 1. Install Glances and Required Python Packages
+
+On your Ubuntu server, install Glances and all required Python modules using apt:
 
 ```sh
 sudo apt update
-sudo apt install python3-pip
-pip3 install flask psutil
+sudo apt install glances python3-bottle python3-psutil python3-netifaces python3-pip
 ```
 
-### 2. Utwórz folder na API
+- `glances` - the main monitoring tool
+- `python3-bottle`, `python3-psutil`, `python3-netifaces` - required for the Glances API to function correctly
 
-Przykład:
-```sh
-mkdir ~/server-helper-api
-cd ~/server-helper-api
-```
+### 2. Start Glances with the Web API
 
-### 3. Stwórz plik `server_api.py` z poniższą zawartością
-
-```python
-from flask import Flask, jsonify
-import psutil
-import platform
-
-app = Flask(__name__)
-
-@app.route("/api/cpu")
-def cpu():
-    return jsonify({"total": psutil.cpu_percent(interval=0.5)})
-
-@app.route("/api/mem")
-def mem():
-    return jsonify({"percent": psutil.virtual_memory().percent})
-
-@app.route("/api/sensors")
-def sensors():
-    # Example: return CPU temperature if available
-    temps = psutil.sensors_temperatures()
-    if "coretemp" in temps:
-        return jsonify([{"label": "CPUTIN", "value": temps["coretemp"][0].current}])
-    return jsonify([])
-
-@app.route("/api/disk")
-def disk():
-    disks = []
-    for part in psutil.disk_partitions():
-        usage = psutil.disk_usage(part.mountpoint)
-        disks.append({
-            "mnt_point": part.mountpoint,
-            "device": part.device,
-            "percent": usage.percent,
-            "used": usage.used,
-            "size": usage.total
-        })
-    return jsonify({"fs": disks})
-
-@app.route("/api/net")
-def net():
-    net_io = psutil.net_io_counters(pernic=True)
-    return jsonify([{
-        "interface_name": k,
-        "bytes_sent": v.bytes_sent,
-        "bytes_recv": v.bytes_recv,
-        "speed": 0  # Fill with actual speed if available
-    } for k, v in net_io.items()])
-
-@app.route("/api/system")
-def system():
-    return jsonify({"hostname": platform.node()})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=61208)
-```
-
-### 4. (Opcjonalnie) Stwórz usługę systemd
-
-Aby API uruchamiało się automatycznie po starcie serwera:
+Start Glances with the REST API enabled (default port 61208):
 
 ```sh
-sudo nano /etc/systemd/system/server-helper-api.service
+glances -w
 ```
 
-Wklej poniższą konfigurację (zmień ścieżki na swoje):
+You should see output indicating that the web server is running.  
+Test access by opening:  
+`http://:61208/api/`  
+in your browser. You should see a JSON response.
+
+### 3. (Optional) Run Glances as a systemd service
+
+To have Glances start automatically on boot, create a systemd service:
+
+```sh
+sudo nano /etc/systemd/system/glances.service
+```
+
+Paste the following:
 
 ```
 [Unit]
-Description=Server Helper API
+Description=Glances monitoring service
 After=network.target
 
 [Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/server-helper-api
-ExecStart=/usr/bin/python3 /home/ubuntu/server-helper-api/server_api.py
+ExecStart=/usr/bin/glances -w
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Zapisz i aktywuj usługę:
+Enable and start the service:
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable server-helper-api
-sudo systemctl start server-helper-api
+sudo systemctl enable glances
+sudo systemctl start glances
 ```
 
-### 5. Sprawdź działanie
+Check status:
 
-- API powinno być dostępne na porcie 61208.
-- Sprawdź w przeglądarce: `http://:61208/api/cpu`
+```sh
+systemctl status glances
+```
+
+---
+
+**Note:**  
+- Your Pico 2W connects to the Glances API endpoint (default: `http://:61208/api/`).
+- No additional Python scripts or Flask apps are required on the server—Glances provides all necessary endpoints out of the box.
 
 ---
 
@@ -277,8 +234,9 @@ sudo systemctl start server-helper-api
 - [SSD1306 MicroPython Driver](https://github.com/micropython/micropython/blob/master/drivers/display/ssd1306.py)
 - [Thonny IDE](https://thonny.org/)
 - [mpremote Tool](https://github.com/micropython/micropython/tree/master/tools/mpremote)
+- [Glances Documentation](https://nicolargo.github.io/glances/)
 - [psutil Documentation](https://psutil.readthedocs.io/)
-- [Flask Documentation](https://flask.palletsprojects.com/)
+- [Bottle Documentation](https://bottlepy.org/docs/dev/)
 
 ---
 
