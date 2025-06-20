@@ -52,6 +52,8 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
      ```
 
 3. **Connect Hardware:**
+Twoja tabelka jest **poprawna składniowo** w standardowym Markdown (np. GitHub, Typora, Obsidian, Visual Studio Code, StackEdit, HackMD, itp.).
+
 | pico PI 2W | Screen |
 |------------|--------|
 | GND        | GND    |
@@ -63,6 +65,15 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 | GP4        | K3     |
 | GP5        | K4     |
 
+---
+
+## Podsumowanie
+
+- **Tabelka jest poprawna Markdown.**
+- Jeśli nie działa, to ograniczenie platformy, a nie błąd w składni.
+- Spróbuj w edytorze obsługującym tabele Markdown, np. https://dillinger.io/ lub w README na GitHubie.
+
+Daj znać, gdzie chcesz ją użyć – podpowiem, jak najlepiej ją sformatować dla tej platformy!
 ---
 
 ## Usage
