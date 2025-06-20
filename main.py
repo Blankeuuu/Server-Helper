@@ -8,7 +8,7 @@ import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.2.6 "
+MAIN_VERSION = "1.2.6"
 
 LANGS = {
     "ENG": {
@@ -17,6 +17,7 @@ LANGS = {
         "UNIT": "Unit",
         "REFRESH": "Refresh",
         "SLEEP_MODE": "Sleep Mode",
+        "SLEEP_ENABLED": "On/Off",
         "SLEEP_START": "Start",
         "SLEEP_END": "End",
         "UPDATE": "Update",
@@ -38,7 +39,7 @@ LANGS = {
         "BRIGHTNESS": "Brightness",
         "UPDATING": "Updating...",
         "PROGRESS": "Progress",
-        "TIMEZONE": "Timezone"  # Dodano
+        "TIMEZONE": "Timezone"
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -46,6 +47,7 @@ LANGS = {
         "UNIT": "Jednostka",
         "REFRESH": "Odswiezanie",
         "SLEEP_MODE": "Tryb Snu",
+        "SLEEP_ENABLED": "wł/wył",
         "SLEEP_START": "Start",
         "SLEEP_END": "Koniec",
         "UPDATE": "Aktualizuj",
@@ -67,20 +69,21 @@ LANGS = {
         "BRIGHTNESS": "Jasnosc",
         "UPDATING": "Aktualizacja...",
         "PROGRESS": "Postęp",
-        "TIMEZONE": "Strefa czasowa"  # Dodano
+        "TIMEZONE": "Strefa czasowa"
     }
 }
 
-# Ustawienia z nagłówkiem i przyciskiem update na końcu
 settings = [
+    {"label": "VERSION", "header": True},
+    {"label": "UPDATE", "update": True},
     {"label": "LANG", "key": "lang", "options": ["ENG", "PL"]},
     {"label": "UNIT", "key": "unit", "options": ["B", "KB", "MB", "GB"]},
     {"label": "REFRESH", "key": "refresh", "min": 1, "max": 60, "step": 1},
     {"label": "SLEEP_MODE", "header": True},
+    {"label": "SLEEP_ENABLED", "key": "sleep_enabled", "options": [0, 1]},
     {"label": "SLEEP_START", "key": "sleep_start", "min": 0, "max": 23, "step": 1},
     {"label": "SLEEP_END", "key": "sleep_end", "min": 0, "max": 23, "step": 1},
-    {"label": "TIMEZONE", "key": "timezone", "min": -12, "max": 14, "step": 1},  # Dodano
-    {"label": "UPDATE", "update": True}
+    {"label": "TIMEZONE", "key": "timezone", "min": -12, "max": 14, "step": 1}
 ]
 
 settings_state = conf.settings.copy()
@@ -93,7 +96,7 @@ screen_off = False
 last_activity_time = time.ticks_ms()
 SLEEP_DURATION = 15 * 1000
 settings_scroll_offset = 0
-sleep_wake_ignore = False  # <--- nowa flaga ignorowania pierwszego kliknięcia po wybudzeniu
+sleep_wake_ignore = False
 
 SSID = conf.SSID
 PASSWORD = conf.PASSWORD
@@ -475,7 +478,7 @@ def display_net_data(data):
     oled.show()
 
 def scroll_version_text(version, y, selected, now):
-    max_width = 64  # Zmieniono na 64 piksele
+    max_width = 64
     char_width = 8
     text = version
     text_px = len(text) * char_width
@@ -491,7 +494,6 @@ def scroll_version_text(version, y, selected, now):
 def display_settings_panel(now=0):
     oled.fill(0)
     global settings, settings_index, settings_state, settings_scroll_offset
-    # Nagłówek z ikoną i separator
     oled.rect(0, 0, 128, 12, 1)
     oled.text(T("SETTINGS"), 33, 2, 1)
     oled.hline(0, 12, 128, 1)
@@ -507,8 +509,11 @@ def display_settings_panel(now=0):
     for i, s in enumerate(visible_settings):
         y = 18 + 14 * visible_idx
         idx = settings_scroll_offset + i
-        # Upiększenie: ramka wokół wybranej opcji, separator pod nagłówkiem, kropki na scrollbarze
-        if s.get("header"):
+        if s.get("header") and s["label"] == "VERSION":
+            version_text = f"{T('VERSION')}. {MAIN_VERSION.strip()}"
+            oled.text("- " + version_text + " -", 8, y, 1)
+            oled.hline(0, y+10, 128, 1)
+        elif s.get("header"):
             oled.text("- " + T(s["label"]) + " -", 10, y, 1)
             oled.hline(0, y+10, 128, 1)
         elif s.get("update"):
@@ -517,17 +522,17 @@ def display_settings_panel(now=0):
                 oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
             oled.text(f"{prefix}{T('UPDATE')}", 4, y, 1)
-            version_disp = scroll_version_text(MAIN_VERSION, y, idx==settings_index, time.ticks_ms())
-            oled.text(version_disp, 64, y+10, 1)  # Nowa linia dla wersji
         else:
             if idx == settings_index:
                 oled.rect(0, y-2, 128, 14, 1)
                 oled.fill_rect(2, y, 124, 10, 0)
             prefix = ">" if idx == settings_index else " "
-            val = settings_state[s["key"]]
+            if s["key"] == "sleep_enabled":
+                val = "On" if settings_state["sleep_enabled"] else "Off"
+            else:
+                val = settings_state[s["key"]]
             oled.text(f"{prefix}{T(s['label'])}: {val}", 4, y, 1)
         visible_idx += 1
-    # Usunięto scrollbar (5 linii kodu)
     oled.show()
 
 def display_update_confirm():
@@ -577,16 +582,21 @@ def check_alert_triggers(data, disk_data):
     except:
         pass
 
-def get_local_hour():  # Dodano
+def get_local_hour():
     try:
-        _, _, _, hour, _, _, _, _ = time.localtime()
-        return (hour + settings_state["timezone"]) % 24
+        t = time.localtime()
+        hour = t[3]
+        tz = int(settings_state.get("timezone", 0))
+        local_hour = (hour + tz) % 24
+        return local_hour
     except:
         return 0
 
 def is_sleep_time():
+    if not settings_state.get("sleep_enabled", 0):
+        return False
     try:
-        local_hour = get_local_hour()  # Użyj lokalnej godziny
+        local_hour = get_local_hour()
         start = settings_state["sleep_start"]
         end = settings_state["sleep_end"]
         if start < end:
@@ -601,7 +611,7 @@ def handle_sleep_mode():
     if is_sleep_time():
         if not button_k1.value() or not button_k2.value() or not button_k3.value() or not button_k4.value():
             if screen_off:
-                sleep_wake_ignore = True  # Po wybudzeniu ignoruj pierwsze kliknięcie!
+                sleep_wake_ignore = True
             screen_off = False
             last_activity_time = time.ticks_ms()
             oled.poweron()
@@ -640,7 +650,6 @@ def main():
             if screen_off:
                 time.sleep(0.1)
                 continue
-            # Po wybudzeniu ignoruj pierwsze kliknięcie dowolnego przycisku
             if sleep_wake_ignore:
                 if any_button_pressed():
                     while any_button_pressed():
