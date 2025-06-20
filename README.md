@@ -52,11 +52,16 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
      ```
 
 3. **Connect Hardware:**
-   - Wire the SSD1306 display to the Pico 2W (I2C: SCL=GP1, SDA=GP0).
-   - Connect the four buttons to GP2, GP3, GP4, GP5 (active low with pull-ups).
-
-4. **Insert MicroSD (optional):**
-   - For extended logging or updates, insert a formatted microSD card.W
+| pico PI 2W | Screen |
+|------------|--------|
+| GND        | GND    |
+| 3V3        | VCC    |
+| GP1        | SCL    |
+| GP0        | SDA    |
+| GP2        | K1     |
+| GP3        | K2     |
+| GP4        | K3     |
+| GP5        | K4     |
 
 ---
 
