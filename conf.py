@@ -9,6 +9,7 @@ DEFAULTS = {
     "refresh": 5,
     "sleep_start": 22,
     "sleep_end": 6,
+    "sleep_enabled": 0,
     "timezone": 0  # UTC+0
 }
 
