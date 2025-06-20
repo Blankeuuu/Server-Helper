@@ -8,8 +8,10 @@ DEFAULTS = {
     "unit": "GB",
     "refresh": 5,
     "sleep_start": 22,
-    "sleep_end": 6
+    "sleep_end": 6,
+    "timezone": 0  # UTC+0
 }
+
 
 def load():
     try:
