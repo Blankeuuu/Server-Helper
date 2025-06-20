@@ -8,7 +8,7 @@ import math
 import conf
 import ugit
 
-MAIN_VERSION = "1.2.5"
+MAIN_VERSION = "1.2.6 "
 
 LANGS = {
     "ENG": {
@@ -37,7 +37,8 @@ LANGS = {
         "NETWORK_NO": "enp3s0 no data",
         "BRIGHTNESS": "Brightness",
         "UPDATING": "Updating...",
-        "PROGRESS": "Progress"
+        "PROGRESS": "Progress",
+        "TIMEZONE": "Timezone"  # Dodano
     },
     "PL": {
         "SETTINGS": "USTAWIENIA",
@@ -65,7 +66,8 @@ LANGS = {
         "NETWORK_NO": "enp3s0 brak danych",
         "BRIGHTNESS": "Jasnosc",
         "UPDATING": "Aktualizacja...",
-        "PROGRESS": "Postęp"
+        "PROGRESS": "Postęp",
+        "TIMEZONE": "Strefa czasowa"  # Dodano
     }
 }
 
@@ -77,6 +79,7 @@ settings = [
     {"label": "SLEEP_MODE", "header": True},
     {"label": "SLEEP_START", "key": "sleep_start", "min": 0, "max": 23, "step": 1},
     {"label": "SLEEP_END", "key": "sleep_end", "min": 0, "max": 23, "step": 1},
+    {"label": "TIMEZONE", "key": "timezone", "min": -12, "max": 14, "step": 1},  # Dodano
     {"label": "UPDATE", "update": True}
 ]
 
@@ -472,7 +475,7 @@ def display_net_data(data):
     oled.show()
 
 def scroll_version_text(version, y, selected, now):
-    max_width = 128 - 64 - 2
+    max_width = 64  # Zmieniono na 64 piksele
     char_width = 8
     text = version
     text_px = len(text) * char_width
@@ -515,7 +518,7 @@ def display_settings_panel(now=0):
             prefix = ">" if idx == settings_index else " "
             oled.text(f"{prefix}{T('UPDATE')}", 4, y, 1)
             version_disp = scroll_version_text(MAIN_VERSION, y, idx==settings_index, time.ticks_ms())
-            oled.text(f"{T('VERSION')}: {version_disp}", 64, y, 1)
+            oled.text(version_disp, 64, y+10, 1)  # Nowa linia dla wersji
         else:
             if idx == settings_index:
                 oled.rect(0, y-2, 128, 14, 1)
@@ -524,14 +527,7 @@ def display_settings_panel(now=0):
             val = settings_state[s["key"]]
             oled.text(f"{prefix}{T(s['label'])}: {val}", 4, y, 1)
         visible_idx += 1
-    # "Scroll bar" po prawej
-    bar_height = 38
-    bar_top = 16
-    if total_items > visible_lines:
-        bar_len = int(bar_height * visible_lines / total_items)
-        bar_pos = int(bar_height * settings_scroll_offset / total_items)
-        oled.fill_rect(124, bar_top + bar_pos, 2, bar_len, 1)
-        oled.rect(124, bar_top, 2, bar_height, 1)
+    # Usunięto scrollbar (5 linii kodu)
     oled.show()
 
 def display_update_confirm():
@@ -581,15 +577,22 @@ def check_alert_triggers(data, disk_data):
     except:
         pass
 
-def is_sleep_time():
+def get_local_hour():  # Dodano
     try:
         _, _, _, hour, _, _, _, _ = time.localtime()
+        return (hour + settings_state["timezone"]) % 24
+    except:
+        return 0
+
+def is_sleep_time():
+    try:
+        local_hour = get_local_hour()  # Użyj lokalnej godziny
         start = settings_state["sleep_start"]
         end = settings_state["sleep_end"]
         if start < end:
-            return start <= hour < end
+            return start <= local_hour < end
         else:
-            return hour >= start or hour < end
+            return local_hour >= start or local_hour < end
     except:
         return False
 
@@ -787,3 +790,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
