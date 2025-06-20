@@ -205,7 +205,7 @@ systemctl status glances
 ---
 
 **Note:**  
-- Your Pico 2W connects to the Glances API endpoint (default: `http://:61208/api/`).
+- Your Pico 2W connects to the Glances API endpoint (default: `http://(server-ip):61208/api/4`).
 - No additional Python scripts or Flask apps are required on the server—Glances provides all necessary endpoints out of the box.
 
 ---
