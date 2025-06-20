@@ -56,7 +56,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
    - Connect the four buttons to GP2, GP3, GP4, GP5 (active low with pull-ups).
 
 4. **Insert MicroSD (optional):**
-   - For extended logging or updates, insert a formatted microSD card.
+   - For extended logging or updates, insert a formatted microSD card.W
 
 ---
 
@@ -230,7 +230,7 @@ systemctl status glances
 ## Links
 
 - [Project Repository](https://github.com/Blankeuuu/Server-Helper)
-- [MicroPython for Pico W/2W]([https://micropython.org/download/rp2-pico-w/](https://micropython.org/download/RPI_PICO2_W/))
+- [MicroPython for Pico W/2W](https://micropython.org/download/RPI_PICO2_W/)
 - [SSD1306 MicroPython Driver](https://github.com/stlehmann/micropython-ssd1306)
 - [Thonny IDE](https://thonny.org/)
 - [mpremote Tool](https://github.com/micropython/micropython/tree/master/tools/mpremote)
