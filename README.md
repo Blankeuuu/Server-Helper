@@ -237,5 +237,3 @@ if __name__ == "__main__":
 
 For questions or contributions, please open an issue or pull request on the [GitHub repository](https://github.com/Blankeuuu/Server-Helper).
 ```
-
----
