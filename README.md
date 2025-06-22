@@ -51,6 +51,7 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
      ```
 
 3. **Connect Hardware:**
+   
 | pico PI 2W | Screen |
 |------------|--------|
 | GND        | GND    |
