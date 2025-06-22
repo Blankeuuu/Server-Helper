@@ -65,15 +65,6 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 
 ---
 
-## Podsumowanie
-
-- **Tabelka jest poprawna Markdown.**
-- Jeśli nie działa, to ograniczenie platformy, a nie błąd w składni.
-- Spróbuj w edytorze obsługującym tabele Markdown, np. https://dillinger.io/ lub w README na GitHubie.
-
-Daj znać, gdzie chcesz ją użyć – podpowiem, jak najlepiej ją sformatować dla tej platformy!
----
-
 ## Usage
 
 - **Power the Pico 2W:** Connect via USB or 5V supply.
