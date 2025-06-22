@@ -51,8 +51,6 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
      ```
 
 3. **Connect Hardware:**
-Twoja tabelka jest **poprawna składniowo** w standardowym Markdown (np. GitHub, Typora, Obsidian, Visual Studio Code, StackEdit, HackMD, itp.).
-
 | pico PI 2W | Screen |
 |------------|--------|
 | GND        | GND    |
