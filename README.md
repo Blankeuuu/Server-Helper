@@ -20,7 +20,6 @@ A lightweight, WiFi-enabled hardware monitor for Ubuntu servers using Raspberry 
 **Hardware Requirements:**
 - Raspberry Pi Pico 2W (RP2040, WiFi, Bluetooth)
 - SSD1306 0.96" OLED display (I2C, 128x64, 4-button panel)
-- MicroSD card (64GB recommended)
 - Ubuntu server (tested on 20.04/22.04)
 
 **Software Prerequisites:**
